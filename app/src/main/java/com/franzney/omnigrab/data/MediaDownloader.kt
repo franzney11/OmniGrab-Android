@@ -11,7 +11,6 @@ import com.franzney.omnigrab.model.AudioOption
 import com.franzney.omnigrab.model.DownloadMode
 import com.franzney.omnigrab.model.MediaMeta
 import com.franzney.omnigrab.model.VideoOption
-import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import org.json.JSONObject
@@ -232,8 +231,8 @@ object MediaDownloader {
             }
             args.addAll(listOf("-movflags", "+faststart", upscaledFile.absolutePath))
 
-            val ffRes = FFmpeg.getInstance().execute(args.toTypedArray())
-            if (ffRes.returnCode != 0 || !upscaledFile.exists()) {
+            val ffmpegExitCode = executeFFmpeg(context, args)
+            if (ffmpegExitCode != 0 || !upscaledFile.exists()) {
                 throw IllegalStateException("FFmpeg falló al reescalar el vídeo.")
             }
             workingFile.delete()
@@ -250,8 +249,8 @@ object MediaDownloader {
                 "-movflags", "+faststart",
                 mutedFile.absolutePath
             )
-            val ffRes = FFmpeg.getInstance().execute(args)
-            if (ffRes.returnCode == 0 && mutedFile.exists()) {
+            val ffmpegExitCode = executeFFmpeg(context, args)
+            if (ffmpegExitCode == 0 && mutedFile.exists()) {
                 workingFile.delete()
                 workingFile = mutedFile
             }
@@ -271,6 +270,27 @@ object MediaDownloader {
         val savedResult = saveToDestination(context, workingFile, finalName, mime, mode == DownloadMode.AUDIO_ONLY, targetTreeUriString)
         workingFile.delete()
         return savedResult
+    }
+
+    private fun executeFFmpeg(context: Context, args: List<String>): Int {
+        val executable = File(context.applicationInfo.nativeLibraryDir, "libffmpeg.so")
+        if (!executable.isFile) {
+            throw IllegalStateException("No se encontró el ejecutable de FFmpeg.")
+        }
+
+        val ffmpegLibDir = File(context.noBackupFilesDir, "youtubedl-android/packages/ffmpeg/usr/lib")
+        val process = ProcessBuilder(listOf(executable.absolutePath) + args).apply {
+            environment()["LD_LIBRARY_PATH"] = ffmpegLibDir.absolutePath
+            environment()["TMPDIR"] = context.cacheDir.absolutePath
+            redirectErrorStream(true)
+        }.start()
+
+        process.inputStream.bufferedReader().use { reader ->
+            while (reader.readLine() != null) {
+                // Drain FFmpeg output to prevent the process from blocking on a full pipe.
+            }
+        }
+        return process.waitFor()
     }
 
     private fun saveToDestination(
