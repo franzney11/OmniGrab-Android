@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <cache-path name="updates" path="updates/" />
+    <cache-path name="temp_media" path="temp_media/" />
+    <external-files-path name="external_files" path="." />
+    <external-path name="external_storage" path="." />
+</paths>

@@ -1,0 +1,92 @@
+name: Build OmniGrab Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Determine app version
+        id: ver
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VER="${GITHUB_REF_NAME#v}"
+            CODE="${{ github.run_number }}"
+          else
+            VER="1.0.${{ github.run_number }}"
+            CODE="${{ github.run_number }}"
+          fi
+          echo "version_name=$VER" >> "$GITHUB_OUTPUT"
+          echo "version_code=$CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release signing keystore
+        shell: bash
+        run: |
+          keytool -genkeypair -v \
+            -keystore "$RUNNER_TEMP/omnigrab-release.jks" \
+            -alias omnigrab \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass omnigrab123 -keypass omnigrab123 \
+            -dname "CN=OmniGrab, OU=OpenSource, O=OmniGrab, L=Merida, ST=Extremadura, C=ES"
+
+      - name: Build Signed Release APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/omnigrab-release.jks
+          ANDROID_KEYSTORE_PASSWORD: omnigrab123
+          ANDROID_KEY_ALIAS: omnigrab
+          ANDROID_KEY_PASSWORD: omnigrab123
+        run: |
+          gradle assembleRelease \
+            -PAPP_VERSION_NAME=${{ steps.ver.outputs.version_name }} \
+            -PAPP_VERSION_CODE=${{ steps.ver.outputs.version_code }}
+
+      - name: Rename APK artifact
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk OmniGrab-Android.apk
+          ls -lh OmniGrab-Android.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OmniGrab-Android-APK
+          path: OmniGrab-Android.apk
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: OmniGrab Android ${{ github.ref_name }}
+          body: |
+            ## OmniGrab Android ${{ github.ref_name }}
+
+            - Descarga **OmniGrab-Android.apk** e instálalo directamente en tu móvil Android (Android 8.0+).
+            - Incluye motor local `yt-dlp` + `FFmpeg` (sin servidores externos), carpetas independientes para Video y Audio con guardado automático y auto-actualización desde GitHub Releases.
+          files: |
+            OmniGrab-Android.apk
