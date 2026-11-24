@@ -249,7 +249,7 @@ object MediaDownloader {
                 "-movflags", "+faststart",
                 mutedFile.absolutePath
             )
-            val ffmpegExitCode = executeFFmpeg(context, args)
+            val ffmpegExitCode = executeFFmpeg(context, args.toList())
             if (ffmpegExitCode == 0 && mutedFile.exists()) {
                 workingFile.delete()
                 workingFile = mutedFile
